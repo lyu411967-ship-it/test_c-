@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Waterfall Sandbox</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #080a0f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            pointer-events: none;
+        }
+        h1 {
+            font-size: 16px;
+            margin: 0 0 5px 0;
+            color: #ffffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        p {
+            font-size: 13px;
+            margin: 0;
+            color: #00ffff;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>Pixel Sandbox (Spawn: 50)</h1>
+        <p>Right Click / Touch — Erase | Press 'C' — Clear Screen</p>
+        <p id="counter">Particles: 0</p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        const SPAWN_RATE = 50; // Particles spawned per frame
+        // ==========================================
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let particles = [];
+        let isMouseDown = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        let hueCounter = 0;
+
+        // Mouse and touch input listeners
+        window.addEventListener('mousedown', (e) => { if (e.button === 2) isMouseDown = true; });
+        window.addEventListener('mouseup', (e) => { if (e.button === 2) isMouseDown = false; });
+        window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+
+        window.addEventListener('touchstart', (e) => {
+            isMouseDown = true;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+        window.addEventListener('touchmove', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+        window.addEventListener('touchend', () => { isMouseDown = false; });
+
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
+        // Keyboard shortcut to clear particles
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyC' || e.code === 'Space') {
+                particles = [];
+            }
+        });
+
+        function updatePhysics() {
+            hueCounter = (hueCounter + 1.5) % 360;
+            let streamColor = `hsl(${hueCounter}, 80%, 60%)`;
+
+            // Spawn new particles from the top
+            for (let i = 0; i < SPAWN_RATE; i++) {
+                particles.push({
+                    x: Math.random() * (canvas.width - 40) + 20,
+                    y: 0,
+                    velX: (Math.random() - 0.5) * 1.5,
+                    velY: Math.random() * 4 + 4,
+                    isSettled: false,
+                    color: streamColor
+                });
+            }
+
+            let groundY = canvas.height - 20;
+            let rightX = canvas.width - 10;
+            let leftX = 10;
+
+            // Eraser logic
+            if (isMouseDown) {
+                particles = particles.filter(p => Math.abs(p.x - mouseX) > 40 || Math.abs(p.y - mouseY) > 40);
+            }
+
+            // Cap maximum particles to prevent lagging
+            if (particles.length > 15000) {
+                particles.splice(0, 400);
+            }
+
+            // Update particle physics and collisions
+            for (let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                if (p.isSettled) continue;
+
+                p.velY += 0.35;
+                p.x += p.velX;
+                p.y += p.velY;
+
+                // Floor collision
+                if (p.y >= groundY) {
+                    p.y = groundY;
+                    p.isSettled = true;
+                    p.velX = 0;
+                    p.velY = 0;
+                    continue;
+                }
+
+                // Wall bounce
+                if (p.x <= leftX) {
+                    p.x = leftX;
+                    p.velX = -p.velX * 0.3;
+                } else if (p.x >= rightX) {
+                    p.x = rightX;
+                    p.velX = -p.velX * 0.3;
+                }
+
+                // Particle-to-particle collision
+                for (let j = 0; j < particles.length; j++) {
+                    if (i === j) continue;
+                    let other = particles[j];
+
+                    if (Math.abs(other.y - p.y) > 8) continue;
+
+                    let dx = other.x - p.x;
+                    let distSq = dx * dx + (other.y - p.y) * (other.y - p.y);
+
+                    if (distSq < 16 && distSq > 0) {
+                        if (other.isSettled) {
+                            p.isSettled = true;
+                            p.y = other.y - 4;
+                            break;
+                        } else {
+                            p.x -= dx * 0.15;
+                            p.y -= (other.y - p.y) * 0.15;
+                        }
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#080a0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Render all particles
+            for (let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            }
+
+            document.getElementById('counter').innerText = `Particles: ${particles.length}`;
+        }
+
+        function loop() {
+            updatePhysics();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
